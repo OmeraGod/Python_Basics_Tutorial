@@ -1,0 +1,35 @@
+name: Render Blender Solar Eclipse v2
+
+on:
+  push:
+    branches:
+      - chatgpt-blender-eclipse
+    paths:
+      - 'blender/eclipse_scene_v2.py'
+      - '.github/workflows/render-eclipse-v2.yml'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          blender --version
+      - name: Render
+        run: |
+          mkdir -p out
+          set -o pipefail
+          blender --background --python blender/eclipse_scene_v2.py 2>&1 | tee blender.log
+          test -f out/solar_eclipse.blend
+          test -f out/solar_eclipse.mp4
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: solar-eclipse-blender-output-v2
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
