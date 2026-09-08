@@ -1,0 +1,56 @@
+name: Render Solar Eclipse 4K Final
+
+on:
+  push:
+    branches:
+      - chatgpt-blender-eclipse
+    paths:
+      - '.github/workflows/render-eclipse-4k-final.yml'
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Blender and headless graphics
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender libegl1 libegl-mesa0 libgl1 libglx-mesa0 mesa-utils xvfb ffmpeg
+          blender --version
+
+      - name: Render 4K frames in Blender
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          mkdir -p out4k/frames
+          set -o pipefail
+          xvfb-run -a blender --background --python blender/eclipse_4k_final.py 2>&1 | tee blender4k.log
+          test -f out4k/frames/frame_0001.png
+          test -f out4k/frames/frame_0144.png
+
+      - name: Encode MP4
+        run: |
+          ffmpeg -y -framerate 24 -start_number 1 -i out4k/frames/frame_%04d.png \
+            -c:v libx264 -preset medium -crf 17 -pix_fmt yuv420p -movflags +faststart \
+            out4k/solar_eclipse_4k_final.mp4
+          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate -show_entries format=duration,size -of default=nw=1 out4k/solar_eclipse_4k_final.mp4
+          test -s out4k/solar_eclipse_4k_final.mp4
+
+      - name: Create QA contact sheet
+        run: |
+          ffmpeg -y -i out4k/solar_eclipse_4k_final.mp4 -vf "fps=1,scale=640:-1,tile=3x2" -frames:v 1 out4k/qa_contact.jpg
+
+      - name: Upload final MP4
+        uses: actions/upload-artifact@v4
+        with:
+          name: solar-eclipse-4k-final
+          path: |
+            out4k/solar_eclipse_4k_final.mp4
+            out4k/qa_contact.jpg
+            blender4k.log
+          if-no-files-found: error
+          retention-days: 7
