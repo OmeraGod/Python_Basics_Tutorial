@@ -1,0 +1,50 @@
+name: QA Solar Eclipse Final Scene
+
+on:
+  push:
+    branches:
+      - chatgpt-blender-eclipse
+    paths:
+      - '.github/workflows/render-eclipse-qa-final.yml'
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender headless
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender libegl1 libegl-mesa0 libgl1 libglx-mesa0 xvfb ffmpeg
+      - name: Patch script for QA stills
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('blender/eclipse_4k_final.py')
+          s=p.read_text()
+          s=s.replace("lens=cn.nodes.new('CompositorNodeLensdist'); lens.inputs['Distort'].default_value=0.003\n", "")
+          s=s.replace("cn.links.new(rl.outputs['Image'],gl.inputs['Image']); cn.links.new(gl.outputs['Image'],lens.inputs['Image']); cn.links.new(lens.outputs['Image'],comp.inputs['Image'])", "cn.links.new(rl.outputs['Image'],gl.inputs['Image']); cn.links.new(gl.outputs['Image'],comp.inputs['Image'])")
+          s=s.replace("scene.render.resolution_x = 3840", "scene.render.resolution_x = 1280")
+          s=s.replace("scene.render.resolution_y = 2160", "scene.render.resolution_y = 720")
+          s=s.replace("bpy.ops.render.render(animation=True)", "\nfor _f in (1,38,58,72,86,106,144):\n    scene.frame_set(_f)\n    scene.render.filepath=os.path.join(OUT, f'qa_{_f:04d}.png')\n    bpy.ops.render.render(write_still=True)\n")
+          p.write_text(s)
+          PY
+      - name: Render QA frames
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          mkdir -p out4k
+          xvfb-run -a blender --background --python blender/eclipse_4k_final.py
+          ls -lh out4k/qa_*.png
+      - name: Make contact sheet
+        run: |
+          ffmpeg -y -framerate 1 -pattern_type glob -i 'out4k/qa_*.png' -vf 'scale=480:-1,tile=4x2' -frames:v 1 out4k/qa_contact.jpg
+      - name: Upload QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: solar-eclipse-qa-final
+          path: |
+            out4k/qa_*.png
+            out4k/qa_contact.jpg
+          retention-days: 7
