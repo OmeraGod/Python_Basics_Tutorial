@@ -1,0 +1,51 @@
+name: QA Solar Eclipse Realistic V3
+
+on:
+  push:
+    branches:
+      - chatgpt-blender-eclipse
+    paths:
+      - '.github/workflows/render-eclipse-v3qa-final.yml'
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender headless
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender libegl1 libegl-mesa0 libgl1 libglx-mesa0 xvfb ffmpeg
+      - name: Patch scene for QA stills
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('blender/eclipse_4k_real_v3.py')
+          s=p.read_text()
+          s=s.replace("scene.render.resolution_x=3840", "scene.render.resolution_x=1280")
+          s=s.replace("scene.render.resolution_y=2160", "scene.render.resolution_y=720")
+          s=s.replace("bpy.ops.render.render(animation=True)", "\nfor _f in (1,34,50,62,68,72,76,82,94,110,144):\n    scene.frame_set(_f)\n    scene.render.filepath=os.path.join(OUT, f'qa_{_f:04d}.png')\n    bpy.ops.render.render(write_still=True)\n")
+          p.write_text(s)
+          PY
+      - name: Render QA frames
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          mkdir -p out4kv3
+          xvfb-run -a blender --background --python blender/eclipse_4k_real_v3.py 2>&1 | tee qa-v3.log
+          test -s out4kv3/qa_0001.png
+          test -s out4kv3/qa_0072.png
+          test -s out4kv3/qa_0144.png
+      - name: Make contact sheet
+        run: |
+          ffmpeg -y -framerate 1 -pattern_type glob -i 'out4kv3/qa_*.png' -vf 'scale=480:-1,tile=6x2' -frames:v 1 out4kv3/qa_contact_v3.jpg
+      - name: Upload QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: solar-eclipse-v3-qa-final
+          path: |
+            out4kv3/qa_*.png
+            out4kv3/qa_contact_v3.jpg
+            qa-v3.log
+          retention-days: 7
