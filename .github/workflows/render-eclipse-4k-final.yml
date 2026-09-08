@@ -22,6 +22,17 @@ jobs:
           sudo apt-get install -y blender libegl1 libegl-mesa0 libgl1 libglx-mesa0 mesa-utils xvfb ffmpeg
           blender --version
 
+      - name: Patch Blender 4.0 compositor compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('blender/eclipse_4k_final.py')
+          s = p.read_text()
+          s = s.replace("lens=cn.nodes.new('CompositorNodeLensdist'); lens.inputs['Distort'].default_value=0.003\n", "")
+          s = s.replace("cn.links.new(rl.outputs['Image'],gl.inputs['Image']); cn.links.new(gl.outputs['Image'],lens.inputs['Image']); cn.links.new(lens.outputs['Image'],comp.inputs['Image'])", "cn.links.new(rl.outputs['Image'],gl.inputs['Image']); cn.links.new(gl.outputs['Image'],comp.inputs['Image'])")
+          p.write_text(s)
+          PY
+
       - name: Render 4K frames in Blender
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
